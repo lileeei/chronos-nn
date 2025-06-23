@@ -1,3 +1,4 @@
+use super::traits::Activation;
 use ndarray::Array1;
 
 /// 对数组中的每个元素应用 sigmoid 函数。
@@ -26,6 +27,32 @@ pub fn tanh(x: &Array1<f64>) -> Array1<f64> {
 pub fn tanh_derivative(x: &Array1<f64>) -> Array1<f64> {
     let t = tanh(x);
     t.mapv(|v| 1.0 - v.powi(2))
+}
+
+/// Tanh 激活函数的结构体实现。
+pub struct Tanh;
+
+impl Activation for Tanh {
+    fn forward(&self, x: &Array1<f64>) -> Array1<f64> {
+        tanh(x)
+    }
+
+    fn derivative(&self, x: &Array1<f64>) -> Array1<f64> {
+        tanh_derivative(x)
+    }
+}
+
+/// Sigmoid 激活函数的结构体实现。
+pub struct Sigmoid;
+
+impl Activation for Sigmoid {
+    fn forward(&self, x: &Array1<f64>) -> Array1<f64> {
+        sigmoid(x)
+    }
+
+    fn derivative(&self, x: &Array1<f64>) -> Array1<f64> {
+        sigmoid_derivative(x)
+    }
 }
 
 #[cfg(test)]
