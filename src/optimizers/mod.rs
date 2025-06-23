@@ -1,2 +1,3 @@
-// Optimization algorithms (e.g., SGD, Adam)
-pub mod losses; 
+// 优化算法 (例如, SGD, Adam)
+pub mod losses;
+pub mod sgd; 
