@@ -1,5 +1,5 @@
 use crate::layers::rnn_cell::{RnnCell, RnnCellGradient};
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
 
 /// 表示一个完整的 RNN 层，它按时间步处理序列数据。
 pub struct RnnLayer {
@@ -88,11 +88,11 @@ impl RnnLayer {
             let da_t = dh_t * &dtanh;
 
             // 计算参数的梯度
-            let da_t_col = da_t.view().into_shape((self.hidden_size, 1)).unwrap();
-            let x_t_row = x_t.view().into_shape((1, input_size)).unwrap();
+            let da_t_col = da_t.view().into_shape_with_order((self.hidden_size, 1)).unwrap();
+            let x_t_row = x_t.view().into_shape_with_order((1, input_size)).unwrap();
             grads.w_ih += &da_t_col.dot(&x_t_row);
 
-            let h_prev_row = h_prev.view().into_shape((1, self.hidden_size)).unwrap();
+            let h_prev_row = h_prev.view().into_shape_with_order((1, self.hidden_size)).unwrap();
             grads.w_hh += &da_t_col.dot(&h_prev_row);
 
             grads.b_h += &da_t;
