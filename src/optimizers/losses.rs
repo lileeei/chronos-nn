@@ -1,4 +1,4 @@
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 
 /// 计算均方误差 (MSE) 损失。
 ///
@@ -17,6 +17,22 @@ pub fn mean_squared_error_derivative(
     targets: &Array1<f64>,
 ) -> Array1<f64> {
     let n = predictions.len() as f64;
+    (predictions - targets) * (2.0 / n)
+}
+
+/// 批处理均方误差 (MSE) 损失。
+/// 输入 predictions/targets: [batch_size, dim]
+/// 返回 batch loss 均值
+pub fn mean_squared_error_batch(predictions: &Array2<f64>, targets: &Array2<f64>) -> f64 {
+    let diff = predictions - targets;
+    let squared_diff = diff.mapv(|v| v.powi(2));
+    squared_diff.mean().unwrap_or(0.0)
+}
+
+/// 批处理均方误差损失的导数。
+/// 返回每个样本的导数 [batch_size, dim]
+pub fn mean_squared_error_derivative_batch(predictions: &Array2<f64>, targets: &Array2<f64>) -> Array2<f64> {
+    let n = predictions.shape()[1] as f64;
     (predictions - targets) * (2.0 / n)
 }
 

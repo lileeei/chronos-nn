@@ -71,6 +71,23 @@ impl RnnCell {
         let h_next = self.activation.forward(&z);
         (h_next, z)
     }
+
+    /// 批处理前向传播：支持多个样本同时计算。
+    ///
+    /// # Arguments
+    ///
+    /// * `x_t` - 当前时间步的输入矩阵，shape: [batch_size, input_dim]
+    /// * `h_prev` - 上一时间步的隐藏状态矩阵，shape: [batch_size, hidden_size]
+    ///
+    /// # Returns
+    ///
+    /// * `(h_next, z)` - 新隐藏状态和线性变换结果，均为 [batch_size, hidden_size]
+    pub fn forward_batch(&self, x_t: &ndarray::Array2<f64>, h_prev: &ndarray::Array2<f64>) -> (ndarray::Array2<f64>, ndarray::Array2<f64>) {
+        // z = h_prev * W_hh^T + x_t * W_ih^T + b_h
+        let z = h_prev.dot(&self.w_hh.t()) + x_t.dot(&self.w_ih.t()) + &self.b_h;
+        let h_next = self.activation.forward_batch(&z);
+        (h_next, z)
+    }
 }
 
 #[cfg(test)]
