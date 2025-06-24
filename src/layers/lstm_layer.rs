@@ -152,4 +152,49 @@ mod tests {
         assert_eq!(hs.shape(), &[batch_size, seq_len, hidden_size]);
         assert_eq!(cs.shape(), &[batch_size, seq_len, hidden_size]);
     }
+
+    #[test]
+    fn test_lstm_layer_training_step_many_to_one() {
+        let input_size = 2;
+        let hidden_size = 3;
+        let seq_len = 6;
+        let batch_size = 2;
+        let learning_rate = 0.05;
+
+        let mut layer = LstmLayer::new(input_size, hidden_size);
+        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+
+        // 构造长依赖记忆任务输入 [batch, seq_len, input_size]
+        let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
+        // batch 0: 前3步为信号，后3步为干扰
+        xs.slice_mut(s![0, 0, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(s![0, 1, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(s![0, 2, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(s![0, 3.., ..]).assign(&arr2(&[[0.5, 0.5]; 3]));
+        // batch 1: 前3步为信号，后3步为干扰
+        xs.slice_mut(s![1, 0, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(s![1, 1, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(s![1, 2, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(s![1, 3.., ..]).assign(&arr2(&[[0.5, 0.5]; 3]));
+
+        // 目标输出为第2步的信号（模拟记忆任务）
+        let ys = arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]);
+
+        let mut last_loss = f64::MAX;
+        for i in 0..40 {
+            let (ps, cache) = layer.forward_many_to_one(&xs);
+            let loss = losses::mean_squared_error_batch(&ps, &ys);
+            let d_ps = losses::mean_squared_error_derivative_batch(&ps, &ys);
+            // 只对最后一个时间步反向传播
+            let mut d_h_list = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
+            d_h_list.slice_mut(s![.., seq_len-1, ..]).assign(&d_ps);
+            let mut grads = layer.backward_batch(&d_h_list, &cache);
+            layer.cell.update(&grads, learning_rate);
+            if i > 0 {
+                assert!(loss < last_loss + 1e-6, "LSTM Many-to-one loss did not decrease at iter {i}");
+            }
+            last_loss = loss;
+        }
+        assert!(last_loss < 0.5);
+    }
 } 
