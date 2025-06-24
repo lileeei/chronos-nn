@@ -1,6 +1,8 @@
 use crate::layers::lstm_cell::{LstmCell, LstmCellGradient};
 use ndarray::{Array2, Array3, Axis, s};
 use ndarray::Array1;
+use crate::optimizers::{losses, sgd::Sgd};
+use ndarray::{arr2, arr1};
 
 /// LSTM 层的批处理缓存
 pub struct LstmBatchCache {
@@ -112,6 +114,22 @@ impl LstmLayer {
             dc_next = dc_prev;
         }
         grad
+    }
+
+    /// Many-to-one 前向传播：输入 shape [batch_size, seq_len, input_dim]
+    /// 返回每个 batch 的最后一个隐藏状态 [batch_size, hidden_size] 及缓存
+    pub fn forward_many_to_one(&self, xs: &Array3<f64>) -> (Array2<f64>, LstmBatchCache) {
+        let (hs_stack, _cs_stack, cache) = self.forward_batch(xs);
+        let seq_len = hs_stack.shape()[1];
+        let last_h = hs_stack.index_axis(Axis(1), seq_len - 1).to_owned();
+        (last_h, cache)
+    }
+
+    /// Many-to-many 前向传播：输入 shape [batch_size, seq_len, input_dim]
+    /// 返回所有时间步的隐藏状态 [batch_size, seq_len, hidden_size] 及缓存
+    pub fn forward_many_to_many(&self, xs: &Array3<f64>) -> (Array3<f64>, LstmBatchCache) {
+        let (hs_stack, _cs_stack, cache) = self.forward_batch(xs);
+        (hs_stack, cache)
     }
 }
 

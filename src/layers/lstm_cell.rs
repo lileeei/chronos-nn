@@ -147,6 +147,18 @@ impl LstmCell {
 
         (grad, dx, dh_prev, dc_prev)
     }
+
+    /// 用梯度和学习率更新参数
+    pub fn update(&mut self, grads: &LstmCellGradient, lr: f64) {
+        self.w_f = &self.w_f - &(grads.dw_f.mapv(|v| lr * v));
+        self.w_i = &self.w_i - &(grads.dw_i.mapv(|v| lr * v));
+        self.w_c = &self.w_c - &(grads.dw_c.mapv(|v| lr * v));
+        self.w_o = &self.w_o - &(grads.dw_o.mapv(|v| lr * v));
+        self.b_f = &self.b_f - &(grads.db_f.mapv(|v| lr * v));
+        self.b_i = &self.b_i - &(grads.db_i.mapv(|v| lr * v));
+        self.b_c = &self.b_c - &(grads.db_c.mapv(|v| lr * v));
+        self.b_o = &self.b_o - &(grads.db_o.mapv(|v| lr * v));
+    }
 }
 
 impl LstmCellGradient {
