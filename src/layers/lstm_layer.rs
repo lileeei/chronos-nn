@@ -197,4 +197,49 @@ mod tests {
         }
         assert!(last_loss < 0.5);
     }
+
+    #[test]
+    fn test_lstm_layer_long_term_memory_task() {
+        // 任务：输入序列前几步为信号，后续为干扰，目标是让LSTM记住最早的信号，实现长距离依赖记忆。
+        // 输入 shape: [batch, seq_len, input_dim]
+        let input_size = 2;
+        let hidden_size = 3;
+        let seq_len = 8;
+        let batch_size = 2;
+        let learning_rate = 0.05;
+
+        let mut layer = LstmLayer::new(input_size, hidden_size);
+        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+
+        // 构造输入：batch 0 前2步为信号[1,0]，后6步为干扰[0.5,0.5]；batch 1 前2步为信号[0,1]，后6步为干扰[0.5,0.5]
+        let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
+        xs.slice_mut(s![0, 0, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(s![0, 1, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(s![0, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
+        xs.slice_mut(s![1, 0, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(s![1, 1, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(s![1, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
+
+        // 目标输出：希望模型记住第1步的信号
+        let ys = arr2(&[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+
+        let mut last_loss = f64::MAX;
+        for i in 0..200 {
+            // 只取最后一个时间步的隐藏状态用于输出
+            let (ps, cache) = layer.forward_many_to_one(&xs);
+            let loss = losses::mean_squared_error_batch(&ps, &ys);
+            let d_ps = losses::mean_squared_error_derivative_batch(&ps, &ys);
+            // 只对最后一个时间步反向传播
+            let mut d_h_list = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
+            d_h_list.slice_mut(s![.., seq_len-1, ..]).assign(&d_ps);
+            let mut grads = layer.backward_batch(&d_h_list, &cache);
+            layer.cell.update(&grads, learning_rate);
+            if i > 0 {
+                assert!(loss < last_loss + 1e-6, "LSTM 长距离记忆任务 loss 未递减，第{i}轮");
+            }
+            last_loss = loss;
+        }
+        // 最终loss应足够小，说明模型学会了记忆
+        assert!(last_loss < 0.2, "最终loss未收敛，LSTM未学会长距离记忆");
+    }
 } 
