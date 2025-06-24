@@ -155,6 +155,12 @@ impl RnnLayer {
         let last_h = hs_stack.index_axis(Axis(1), seq_len - 1).to_owned();
         (last_h, cache)
     }
+
+    /// Many-to-many 前向传播：输入 shape [batch_size, seq_len, input_dim]
+    /// 返回所有时间步的隐藏状态 [batch_size, seq_len, hidden_size] 及缓存
+    pub fn forward_many_to_many(&self, xs: &Array3<f64>) -> (Array3<f64>, BatchCache) {
+        self.forward_batch(xs)
+    }
 }
 
 #[cfg(test)]
@@ -285,6 +291,52 @@ mod tests {
             optimizer.update(&mut layer.cell, &mut grads);
             if i > 0 {
                 assert!(loss < last_loss + 1e-6, "Many-to-one loss did not decrease at iter {i}");
+            }
+            last_loss = loss;
+        }
+        assert!(last_loss < 0.5);
+    }
+
+    #[test]
+    fn test_rnn_layer_training_step_many_to_many() {
+        let input_size = 2;
+        let hidden_size = 2;
+        let seq_len = 3;
+        let batch_size = 2;
+        let learning_rate = 0.05;
+
+        let mut layer = RnnLayer::new(input_size, hidden_size);
+        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+
+        // 构造输入 [batch_size, seq_len, input_size]
+        let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
+        xs.slice_mut(s![0, .., ..]).assign(&arr2(&[[1.0, 2.0], [2.0, 1.0], [0.5, 1.5]]));
+        xs.slice_mut(s![1, .., ..]).assign(&arr2(&[[0.5, 1.0], [1.5, 0.5], [1.0, 1.0]]));
+
+        // 构造目标输出 [batch_size, seq_len, hidden_size]，如每步 one-hot 标签
+        let mut ys = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
+        ys.slice_mut(s![0, .., ..]).assign(&arr2(&[[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]));
+        ys.slice_mut(s![1, .., ..]).assign(&arr2(&[[0.0, 1.0], [1.0, 0.0], [0.0, 1.0]]));
+
+        let mut last_loss = f64::MAX;
+        for i in 0..20 {
+            let (ps, cache) = layer.forward_many_to_many(&xs);
+            // 展平 [batch_size, seq_len, hidden_size] 为 [batch_size * seq_len, hidden_size]
+            let ps_flat = ndarray::Array2::from_shape_vec(
+                (batch_size * seq_len, hidden_size),
+                ps.iter().copied().collect()
+            ).unwrap();
+            let ys_flat = ndarray::Array2::from_shape_vec(
+                (batch_size * seq_len, hidden_size),
+                ys.iter().copied().collect()
+            ).unwrap();
+            let loss = losses::mean_squared_error_batch(&ps_flat, &ys_flat);
+            let d_ps = losses::mean_squared_error_derivative_batch(&ps_flat, &ys_flat)
+                .into_shape((batch_size, seq_len, hidden_size)).unwrap();
+            let mut grads = layer.backward_batch(&d_ps, &cache);
+            optimizer.update(&mut layer.cell, &mut grads);
+            if i > 0 {
+                assert!(loss < last_loss + 1e-6, "Many-to-many loss did not decrease at iter {i}");
             }
             last_loss = loss;
         }
