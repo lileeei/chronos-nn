@@ -1,13 +1,16 @@
 use crate::layers::gru_cell::{GruCell, GruCellGradient, GruCache};
 use ndarray::{Array1, Array2, Array3, Axis, s};
+use crate::layers::bi_rnn_layer::RnnLikeLayer;
 
 /// GRU层的批处理缓存，存储每个batch的中间状态
+#[derive(Clone)]
 pub struct GruBatchCache {
     pub caches: Vec<Vec<GruCache>>, // [seq_len][batch] 的cache
     pub h_states: Vec<Array2<f64>>, // [seq_len+1] of [batch, hidden_size]
 }
 
 /// GRU层，支持批处理序列前向传播
+#[derive(Clone)]
 pub struct GruLayer {
     pub cell: GruCell,
     pub hidden_size: usize,
@@ -90,6 +93,13 @@ impl GruLayer {
             dh_next = dh_prev;
         }
         grads
+    }
+}
+
+impl RnnLikeLayer for GruLayer {
+    type Cache = GruBatchCache;
+    fn forward_batch(&self, xs: &ndarray::Array3<f64>) -> (ndarray::Array3<f64>, Self::Cache) {
+        GruLayer::forward_batch(self, xs)
     }
 }
 

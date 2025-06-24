@@ -30,6 +30,7 @@ pub fn tanh_derivative(x: &Array1<f64>) -> Array1<f64> {
 }
 
 /// Tanh 激活函数的结构体实现。
+#[derive(Clone)]
 pub struct Tanh;
 
 impl Activation for Tanh {
@@ -43,6 +44,7 @@ impl Activation for Tanh {
 }
 
 /// Sigmoid 激活函数的结构体实现。
+#[derive(Clone)]
 pub struct Sigmoid;
 
 impl Activation for Sigmoid {

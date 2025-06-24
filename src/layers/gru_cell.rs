@@ -6,6 +6,7 @@ use ndarray::s;
 use crate::activations::traits::Activation;
 
 /// GRU单元的中间缓存，用于反向传播
+#[derive(Clone)]
 pub struct GruCache {
     pub xh: Array1<f64>, // 拼接的[x_t, h_prev]
     pub r_t: Array1<f64>,
@@ -25,6 +26,7 @@ pub struct GruCellGradient {
 }
 
 /// GRU单元（支持单步和批处理前向传播）
+#[derive(Clone)]
 pub struct GruCell {
     pub w_r: Array2<f64>, // [hidden_size, input_size + hidden_size]
     pub w_z: Array2<f64>,
