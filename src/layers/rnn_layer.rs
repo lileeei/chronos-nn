@@ -146,6 +146,15 @@ impl RnnLayer {
         }
         grads
     }
+
+    /// Many-to-one 前向传播：输入 shape [batch_size, seq_len, input_dim]
+    /// 返回每个 batch 的最后一个隐藏状态 [batch_size, hidden_size] 及缓存
+    pub fn forward_many_to_one(&self, xs: &Array3<f64>) -> (Array2<f64>, BatchCache) {
+        let (hs_stack, cache) = self.forward_batch(xs);
+        let seq_len = hs_stack.shape()[1];
+        let last_h = hs_stack.index_axis(Axis(1), seq_len - 1).to_owned();
+        (last_h, cache)
+    }
 }
 
 #[cfg(test)]
@@ -239,6 +248,43 @@ mod tests {
             optimizer.update(&mut layer.cell, &mut grads);
             if i > 0 {
                 assert!(loss < last_loss + 1e-6, "Batch loss did not decrease at iter {i}");
+            }
+            last_loss = loss;
+        }
+        assert!(last_loss < 0.5);
+    }
+
+    #[test]
+    fn test_rnn_layer_training_step_many_to_one() {
+        let input_size = 2;
+        let hidden_size = 3;
+        let seq_len = 4;
+        let batch_size = 2;
+        let learning_rate = 0.05;
+
+        let mut layer = RnnLayer::new(input_size, hidden_size);
+        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+
+        // 构造输入 [batch_size, seq_len, input_size]
+        let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
+        xs.slice_mut(s![0, .., ..]).assign(&arr2(&[[1.0, 2.0], [2.0, 1.0], [0.5, 1.5], [1.5, 0.5]]));
+        xs.slice_mut(s![1, .., ..]).assign(&arr2(&[[0.5, 1.0], [1.5, 0.5], [1.0, 1.0], [0.0, 2.0]]));
+
+        // 构造目标输出 [batch_size, hidden_size]，如 one-hot 分类
+        let ys = arr2(&[[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]]);
+
+        let mut last_loss = f64::MAX;
+        for i in 0..20 {
+            let (ps, cache) = layer.forward_many_to_one(&xs);
+            let loss = losses::mean_squared_error_batch(&ps, &ys);
+            let d_ps = losses::mean_squared_error_derivative_batch(&ps, &ys);
+            // 只对最后一个时间步反向传播
+            let mut d_h_list = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
+            d_h_list.slice_mut(s![.., seq_len-1, ..]).assign(&d_ps);
+            let mut grads = layer.backward_batch(&d_h_list, &cache);
+            optimizer.update(&mut layer.cell, &mut grads);
+            if i > 0 {
+                assert!(loss < last_loss + 1e-6, "Many-to-one loss did not decrease at iter {i}");
             }
             last_loss = loss;
         }
