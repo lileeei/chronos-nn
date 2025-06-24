@@ -3,3 +3,5 @@ pub mod lstm_cell;
 pub mod lstm_layer;
 pub mod rnn_cell;
 pub mod rnn_layer;
+pub mod gru_cell;
+pub mod gru_layer;
