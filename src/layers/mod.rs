@@ -6,3 +6,4 @@ pub mod rnn_layer;
 pub mod gru_cell;
 pub mod gru_layer;
 pub mod bi_rnn_layer;
+pub mod multi_layer_rnn;
