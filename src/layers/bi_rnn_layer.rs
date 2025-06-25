@@ -4,14 +4,22 @@ use ndarray::s;
 /// 通用RNN层Trait，所有RNN/LSTM/GRU层都应实现
 pub trait RnnLikeLayer: Clone {
     type Cache: Clone;
+    type Grad;
     fn forward_batch(&self, xs: &Array3<f64>) -> (Array3<f64>, Self::Cache);
-    // 反向传播接口可后续扩展
+    fn backward_batch(&self, d_h_list: &Array3<f64>, cache: &Self::Cache) -> Self::Grad;
 }
 
 /// 合并策略Trait，支持自定义前向/反向合并
 pub trait MergeStrategy: Clone {
     /// 合并前向和反向输出
     fn merge(&self, forward: &ArrayView2<f64>, backward: &ArrayView2<f64>) -> Array2<f64>;
+    /// 将合并后的梯度拆分为前向和反向部分
+    fn split_grad(
+        &self,
+        d_merged: &ArrayView2<f64>,
+        forward_dim: usize,
+        backward_dim: usize,
+    ) -> (Array2<f64>, Array2<f64>);
 }
 
 /// 通用双向RNN层，支持自定义合并策略
@@ -57,6 +65,28 @@ impl<Layer: RnnLikeLayer, Merge: MergeStrategy> BiRnnLayer<Layer, Merge> {
         ).unwrap();
         (merged, (forward_cache, backward_cache))
     }
+
+    /// 批处理反向传播，输入合并后梯度和cache，返回前向和反向层的梯度
+    pub fn backward_batch(
+        &self,
+        d_merged: &Array3<f64>,
+        caches: &(Layer::Cache, Layer::Cache),
+    ) -> (Layer::Grad, Layer::Grad) {
+        let (batch_size, seq_len, merged_dim) = d_merged.dim();
+        let forward_dim = self.hidden_size;
+        let backward_dim = merged_dim - forward_dim;
+        let mut d_forward = Array3::<f64>::zeros((batch_size, seq_len, forward_dim));
+        let mut d_backward = Array3::<f64>::zeros((batch_size, seq_len, backward_dim));
+        for t in 0..seq_len {
+            let d_merged_t = d_merged.index_axis(Axis(1), t);
+            let (df, db) = self.merge_strategy.split_grad(&d_merged_t, forward_dim, backward_dim);
+            d_forward.slice_mut(s![.., t, ..]).assign(&df);
+            d_backward.slice_mut(s![.., t, ..]).assign(&db);
+        }
+        let grad_f = self.forward_layer.backward_batch(&d_forward, &caches.0);
+        let grad_b = self.backward_layer.backward_batch(&d_backward, &caches.1);
+        (grad_f, grad_b)
+    }
 }
 
 #[derive(Clone)]
@@ -65,6 +95,16 @@ pub struct ConcatMerge;
 impl MergeStrategy for ConcatMerge {
     fn merge(&self, forward: &ArrayView2<f64>, backward: &ArrayView2<f64>) -> Array2<f64> {
         ndarray::concatenate(Axis(1), &[forward.view(), backward.view()]).unwrap()
+    }
+    fn split_grad(
+        &self,
+        d_merged: &ArrayView2<f64>,
+        forward_dim: usize,
+        backward_dim: usize,
+    ) -> (Array2<f64>, Array2<f64>) {
+        let df = d_merged.slice(s![.., 0..forward_dim]).to_owned();
+        let db = d_merged.slice(s![.., forward_dim..(forward_dim+backward_dim)]).to_owned();
+        (df, db)
     }
 }
 
@@ -87,7 +127,7 @@ mod tests {
         let backward_gru = GruLayer::new(input_size, hidden_size);
         let birnn = BiRnnLayer::new(forward_gru, backward_gru, ConcatMerge, hidden_size);
 
-        // 构造输入：batch 0 前2步为信号[1,0]，后6步为干扰[0.5,0.5]；batch 1 前2步为信号[0,1]，后6步为干扰[0.5,0.5]
+        // 构造输入
         let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
         xs.slice_mut(ndarray::s![0, 0, ..]).assign(&arr1(&[1.0, 0.0]));
         xs.slice_mut(ndarray::s![0, 1, ..]).assign(&arr1(&[1.0, 0.0]));
@@ -96,9 +136,59 @@ mod tests {
         xs.slice_mut(ndarray::s![1, 1, ..]).assign(&arr1(&[0.0, 1.0]));
         xs.slice_mut(ndarray::s![1, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
 
+        // 目标输出：希望模型记住第1步的信号，输出维度为hidden_size*2
+        let ys = arr2(&[[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0, 0.0]]);
+
         // 前向传播
         let (outputs, (_f_cache, _b_cache)) = birnn.forward_batch(&xs);
         // 检查输出shape应为[batch, seq_len, hidden_size*2]
         assert_eq!(outputs.shape(), &[batch_size, seq_len, hidden_size * 2]);
+    }
+
+    #[test]
+    fn test_birnnlayer_bigru_concatmerge_training() {
+        // 任务：输入序列前几步为信号，后续为干扰，目标是让BiGRU记住最早的信号，实现长距离依赖记忆。
+        let input_size = 2;
+        let hidden_size = 3;
+        let seq_len = 8;
+        let batch_size = 2;
+        let learning_rate = 0.05;
+
+        let mut forward_gru = GruLayer::new(input_size, hidden_size);
+        let mut backward_gru = GruLayer::new(input_size, hidden_size);
+
+        // 构造输入
+        let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
+        xs.slice_mut(ndarray::s![0, 0, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(ndarray::s![0, 1, ..]).assign(&arr1(&[1.0, 0.0]));
+        xs.slice_mut(ndarray::s![0, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
+        xs.slice_mut(ndarray::s![1, 0, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(ndarray::s![1, 1, ..]).assign(&arr1(&[0.0, 1.0]));
+        xs.slice_mut(ndarray::s![1, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
+
+        // 目标输出：希望模型记住第1步的信号，输出维度为hidden_size*2
+        let ys = arr2(&[[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0, 0.0]]);
+
+        let mut last_loss = f64::MAX;
+        for i in 0..200 {
+            let birnn = BiRnnLayer::new(forward_gru.clone(), backward_gru.clone(), ConcatMerge, hidden_size);
+            let (outputs, caches) = birnn.forward_batch(&xs);
+            let last_ps = outputs.index_axis(ndarray::Axis(1), seq_len - 1).to_owned();
+            let loss = losses::mean_squared_error_batch(&last_ps, &ys);
+            let d_merged = losses::mean_squared_error_derivative_batch(&last_ps, &ys)
+                .into_shape((batch_size, 1, hidden_size * 2)).unwrap();
+            // 只对最后一个时间步反向传播
+            let mut d_merged_full = Array3::<f64>::zeros((batch_size, seq_len, hidden_size * 2));
+            d_merged_full.slice_mut(ndarray::s![.., seq_len-1, ..]).assign(&d_merged.index_axis(ndarray::Axis(1), 0));
+            let (grad_f, grad_b) = birnn.backward_batch(&d_merged_full, &caches);
+            // 简单SGD更新
+            forward_gru.cell.update(&grad_f, learning_rate);
+            backward_gru.cell.update(&grad_b, learning_rate);
+            if i > 0 {
+                assert!(loss < last_loss + 1e-6, "BiGRU训练loss未递减，第{i}轮");
+            }
+            last_loss = loss;
+        }
+        assert!(last_loss < 0.2, "最终loss未收敛，BiGRU未学会长距离记忆");
     }
 } 

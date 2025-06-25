@@ -98,8 +98,12 @@ impl GruLayer {
 
 impl RnnLikeLayer for GruLayer {
     type Cache = GruBatchCache;
+    type Grad = GruCellGradient;
     fn forward_batch(&self, xs: &ndarray::Array3<f64>) -> (ndarray::Array3<f64>, Self::Cache) {
         GruLayer::forward_batch(self, xs)
+    }
+    fn backward_batch(&self, d_h_list: &ndarray::Array3<f64>, cache: &Self::Cache) -> Self::Grad {
+        GruLayer::backward_batch(self, d_h_list, cache)
     }
 }
 
