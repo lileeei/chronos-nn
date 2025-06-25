@@ -1,8 +1,5 @@
 use crate::layers::lstm_cell::{LstmCell, LstmCellGradient};
-use ndarray::{Array2, Array3, Axis, s};
-use ndarray::Array1;
-use crate::optimizers::{losses, sgd::Sgd};
-use ndarray::{arr2, arr1};
+use ndarray::{Array1, Array2, Array3, Axis, s};
 
 /// LSTM 层的批处理缓存
 pub struct LstmBatchCache {
@@ -64,7 +61,7 @@ impl LstmLayer {
         let mut dc_next = Array2::zeros((batch_size, hidden_size));
         for t in (0..seq_len).rev() {
             let dht = d_h_list.slice(s![.., t, ..]).to_owned() + &dh_next;
-            let c_prev = &cache.c_states[t];
+            let _c_prev = &cache.c_states[t];
             let mut dw_f = Array2::zeros((hidden_size, input_size + hidden_size));
             let mut dw_i = Array2::zeros((hidden_size, input_size + hidden_size));
             let mut dw_c = Array2::zeros((hidden_size, input_size + hidden_size));
@@ -78,7 +75,7 @@ impl LstmLayer {
             for b in 0..batch_size {
                 // 取每个样本的 cache
                 let h_cache = &cache.h_states[t + 1].row(b).to_owned();
-                let c_cache = &cache.c_states[t + 1].row(b).to_owned();
+                let _c_cache = &cache.c_states[t + 1].row(b).to_owned();
                 let c_prev_b = &cache.c_states[t].row(b).to_owned();
                 // 构造 LstmCache
                 let cell_cache = self.cell.forward(
@@ -136,7 +133,8 @@ impl LstmLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{arr2, Array3};
+    use crate::optimizers::{losses, sgd::Sgd};
+    use ndarray::{arr1, arr2, Array3};
 
     #[test]
     fn test_lstm_layer_forward_batch() {
@@ -162,7 +160,7 @@ mod tests {
         let learning_rate = 0.05;
 
         let mut layer = LstmLayer::new(input_size, hidden_size);
-        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+        let _optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
 
         // 构造长依赖记忆任务输入 [batch, seq_len, input_size]
         let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
@@ -188,7 +186,7 @@ mod tests {
             // 只对最后一个时间步反向传播
             let mut d_h_list = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
             d_h_list.slice_mut(s![.., seq_len-1, ..]).assign(&d_ps);
-            let mut grads = layer.backward_batch(&d_h_list, &cache);
+            let grads = layer.backward_batch(&d_h_list, &cache);
             layer.cell.update(&grads, learning_rate);
             if i > 0 {
                 assert!(loss < last_loss + 1e-6, "LSTM Many-to-one loss did not decrease at iter {i}");
@@ -209,7 +207,7 @@ mod tests {
         let learning_rate = 0.05;
 
         let mut layer = LstmLayer::new(input_size, hidden_size);
-        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+        let _optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
 
         // 构造输入：batch 0 前2步为信号[1,0]，后6步为干扰[0.5,0.5]；batch 1 前2步为信号[0,1]，后6步为干扰[0.5,0.5]
         let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));
@@ -232,7 +230,7 @@ mod tests {
             // 只对最后一个时间步反向传播
             let mut d_h_list = Array3::<f64>::zeros((batch_size, seq_len, hidden_size));
             d_h_list.slice_mut(s![.., seq_len-1, ..]).assign(&d_ps);
-            let mut grads = layer.backward_batch(&d_h_list, &cache);
+            let grads = layer.backward_batch(&d_h_list, &cache);
             layer.cell.update(&grads, learning_rate);
             if i > 0 {
                 assert!(loss < last_loss + 1e-6, "LSTM 长距离记忆任务 loss 未递减，第{i}轮");

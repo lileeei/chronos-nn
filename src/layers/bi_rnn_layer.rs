@@ -43,7 +43,7 @@ impl<Layer: RnnLikeLayer, Merge: MergeStrategy> BiRnnLayer<Layer, Merge> {
     /// 批处理前向传播，输入shape [batch, seq_len, input_dim]
     /// 输出shape [batch, seq_len, merge_dim]，merge_dim由合并策略决定
     pub fn forward_batch(&self, xs: &Array3<f64>) -> (Array3<f64>, (Layer::Cache, Layer::Cache)) {
-        let (batch_size, seq_len, _input_dim) = xs.dim();
+        let (_batch_size, seq_len, _input_dim) = xs.dim();
         // 前向
         let (forward_hs, forward_cache) = self.forward_layer.forward_batch(xs);
         // 反向
@@ -112,7 +112,7 @@ impl MergeStrategy for ConcatMerge {
 mod tests {
     use super::*;
     use crate::layers::gru_layer::GruLayer;
-    use crate::optimizers::{losses, sgd::Sgd};
+    use crate::optimizers::losses;
     use ndarray::{arr1, arr2, Array3};
 
     #[test]
@@ -137,7 +137,7 @@ mod tests {
         xs.slice_mut(ndarray::s![1, 2.., ..]).assign(&arr2(&[[0.5, 0.5]; 6]));
 
         // 目标输出：希望模型记住第1步的信号，输出维度为hidden_size*2
-        let ys = arr2(&[[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0, 0.0]]);
+        let _ys = arr2(&[[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0, 1.0, 0.0]]);
 
         // 前向传播
         let (outputs, (_f_cache, _b_cache)) = birnn.forward_batch(&xs);
@@ -176,7 +176,7 @@ mod tests {
             let last_ps = outputs.index_axis(ndarray::Axis(1), seq_len - 1).to_owned();
             let loss = losses::mean_squared_error_batch(&last_ps, &ys);
             let d_merged = losses::mean_squared_error_derivative_batch(&last_ps, &ys)
-                .into_shape((batch_size, 1, hidden_size * 2)).unwrap();
+                .into_shape_with_order((batch_size, 1, hidden_size * 2)).unwrap();
             // 只对最后一个时间步反向传播
             let mut d_merged_full = Array3::<f64>::zeros((batch_size, seq_len, hidden_size * 2));
             d_merged_full.slice_mut(ndarray::s![.., seq_len-1, ..]).assign(&d_merged.index_axis(ndarray::Axis(1), 0));

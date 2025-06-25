@@ -88,7 +88,7 @@ impl LstmCell {
 
     /// 批处理前向传播
     pub fn forward_batch(&self, x_t: &Array2<f64>, h_prev: &Array2<f64>, c_prev: &Array2<f64>) -> (Array2<f64>, Array2<f64>) {
-        let batch_size = x_t.shape()[0];
+        let _batch_size = x_t.shape()[0];
         let xh = ndarray::concatenate(Axis(1), &[x_t.view(), h_prev.view()]).unwrap(); // [batch, input+hidden]
         let f_t = self.sigmoid.forward_batch(&(xh.dot(&self.w_f.t()) + &self.b_f));
         let i_t = self.sigmoid.forward_batch(&(xh.dot(&self.w_i.t()) + &self.b_i));

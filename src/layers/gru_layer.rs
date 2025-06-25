@@ -124,7 +124,7 @@ mod tests {
         let learning_rate = 0.05;
 
         let mut layer = GruLayer::new(input_size, hidden_size);
-        let optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
+        let _optimizer = Sgd::new(learning_rate).with_gradient_clipping(1.0);
 
         // 构造输入：batch 0 前2步为信号[1,0]，后6步为干扰[0.5,0.5]；batch 1 前2步为信号[0,1]，后6步为干扰[0.5,0.5]
         let mut xs = Array3::<f64>::zeros((batch_size, seq_len, input_size));

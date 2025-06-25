@@ -93,7 +93,7 @@ impl RnnLayer {
     /// 批处理前向传播：输入 shape [batch_size, seq_len, input_dim]
     /// 返回所有时间步的隐藏状态 [batch_size, seq_len, hidden_size] 及缓存
     pub fn forward_batch(&self, xs: &Array3<f64>) -> (Array3<f64>, BatchCache) {
-        let (batch_size, seq_len, input_dim) = xs.dim();
+        let (batch_size, seq_len, _input_dim) = xs.dim();
         let mut hidden_states = Vec::with_capacity(seq_len + 1);
         let mut inputs_cache = Vec::with_capacity(seq_len);
         let mut linear_outputs_cache = Vec::with_capacity(seq_len);
@@ -249,7 +249,7 @@ mod tests {
             ).unwrap();
             let loss = losses::mean_squared_error_batch(&ps_flat, &ys_flat);
             let d_ps = losses::mean_squared_error_derivative_batch(&ps_flat, &ys_flat)
-                .into_shape((batch_size, seq_len, hidden_size)).unwrap();
+                .into_shape_with_order((batch_size, seq_len, hidden_size)).unwrap();
             let mut grads = layer.backward_batch(&d_ps, &cache);
             optimizer.update(&mut layer.cell, &mut grads);
             if i > 0 {
@@ -332,7 +332,7 @@ mod tests {
             ).unwrap();
             let loss = losses::mean_squared_error_batch(&ps_flat, &ys_flat);
             let d_ps = losses::mean_squared_error_derivative_batch(&ps_flat, &ys_flat)
-                .into_shape((batch_size, seq_len, hidden_size)).unwrap();
+                .into_shape_with_order((batch_size, seq_len, hidden_size)).unwrap();
             let mut grads = layer.backward_batch(&d_ps, &cache);
             optimizer.update(&mut layer.cell, &mut grads);
             if i > 0 {
