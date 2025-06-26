@@ -68,29 +68,7 @@ impl CharLevelLanguageModel {
         onehot
     }
 
-    /// 将one-hot编码转换回文本
-    fn onehot_to_text(&self, onehot: &Array3<f64>) -> String {
-        let mut text = String::new();
-        let seq_len = onehot.shape()[1];
-        
-        for t in 0..seq_len {
-            let mut max_idx = 0;
-            let mut max_val = onehot[[0, t, 0]];
-            
-            for i in 1..self.vocab_size {
-                if onehot[[0, t, i]] > max_val {
-                    max_val = onehot[[0, t, i]];
-                    max_idx = i;
-                }
-            }
-            
-            if let Some(&ch) = self.idx_to_char.get(&max_idx) {
-                text.push(ch);
-            }
-        }
-        
-        text
-    }
+
 
     /// Softmax函数
     fn softmax(&self, x: &Array1<f64>) -> Array1<f64> {
@@ -184,9 +162,9 @@ impl CharLevelLanguageModel {
     /// 从概率分布中采样
     fn sample_from_probs(&self, probs: &Array1<f64>) -> usize {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let random_val: f64 = rng.gen_range(0.0..1.0);
-        
+        let mut rng = rand::rng();
+        let random_val: f64 = rng.random_range(0.0..1.0);
+
         let mut cumsum = 0.0;
         for (i, &prob) in probs.iter().enumerate() {
             cumsum += prob;
@@ -194,7 +172,7 @@ impl CharLevelLanguageModel {
                 return i;
             }
         }
-        
+
         // 如果没有采样到，返回最后一个索引
         probs.len() - 1
     }

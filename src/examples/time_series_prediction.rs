@@ -155,20 +155,20 @@ impl TimeSeriesPredictor {
 /// 生成合成时间序列数据（正弦波 + 噪声）
 pub fn generate_synthetic_data(n_points: usize, noise_level: f64) -> Array1<f64> {
     use rand::Rng;
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let mut data = Array1::zeros(n_points);
-    
+
     for i in 0..n_points {
         let t = i as f64 * 0.1;
         let signal = (t).sin() + 0.5 * (t * 2.0).sin() + 0.3 * (t * 3.0).sin();
         let noise = if noise_level > 0.0 {
-            rng.gen_range(-noise_level..noise_level)
+            rng.random_range(-noise_level..noise_level)
         } else {
             0.0
         };
         data[i] = signal + noise;
     }
-    
+
     data
 }
 
